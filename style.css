@@ -1,0 +1,47 @@
+:root {
+    --dark: #000012;
+    --light: #FFFFED;
+    --light-fluo: #FFD60A;
+}
+
+body {
+    color: var(--dark);
+    background-color: var(--light);
+    font-family: "Computer Modern", sans-serif;
+}
+
+div {
+    padding: 0.2%;
+}
+
+#header {
+    color: var(--light);
+    background-color: var(--dark);
+    padding: 3% 4%;
+}
+
+#header h1 {
+    color: var(--light-fluo);
+}
+
+#header a {
+    color: var(--light);
+    text-decoration: none;
+}
+
+#header a:hover {
+    color: var(--light-fluo);
+    text-decoration: underline;
+}
+
+.card {
+    color: var(--dark);
+    background-color: white;
+    cursor: pointer;
+}
+
+.card-item:hover {
+    color: var(--light-fluo);
+    background-color: var(--dark);
+}
+

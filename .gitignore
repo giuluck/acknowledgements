@@ -8,5 +8,6 @@ venv
 temp
 dist
 res/*
+!res/clouds
 !res/cloud.png
 !res/IndieFlower.ttf

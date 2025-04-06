@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import locale
 import os
 import re
@@ -260,38 +261,41 @@ def groups(data: pd.DataFrame, frequency: str = '6MS', folder: Optional[str] = N
         fig.savefig(f'{folder}/groups.pdf')
 
 
-def clouds(data: pd.DataFrame, res: str, folder: str) -> None:
+def clouds(data: pd.DataFrame, folder: str) -> None:
     """Creates and stores wordclouds for each contact.
 
     :param data:
         The original dataframe.
 
-    :param res:
-        The path to the resource folder.
-
     :param folder:
-        The folder where to store the results.
+        The folder where to read and store the results, or None to print the dictionary items.
     """
-    folder = f'{folder}/clouds'
-    os.makedirs(folder, exist_ok=True)
-    mask = np.array(Image.open(f'{res}/cloud.png'))
+    subfolder = f'{folder}/clouds'
+    os.makedirs(subfolder, exist_ok=True)
+    mask = np.array(Image.open(f'{folder}/cloud.png'))
     # take private chats and text messages only and convert to tokens using nlp model for pos tagging
     # take model stopwords along with italian and english stopwords, then remove all the punctuation with \W
     nlp = spacy.load('it_core_news_lg')
     tags = {'ADJ', 'ADV', 'NOUN', 'PROPN', 'VERB'}
-    stopwords = {*nlp.Defaults.stop_words, *stop_words.get_stop_words('italian'), *stop_words.get_stop_words('english')}
-    stopwords = {re.sub(r'\W', '', sw) for sw in stopwords}
+    stopwords = {re.sub(r'\W', '', sw) for sw in [
+        *WordCloud().stopwords,
+        *nlp.Defaults.stop_words,
+        *stop_words.get_stop_words('italian'),
+        *stop_words.get_stop_words('english')
+    ]}
     data = data[data['group'].isna() & ~data['multimedia']].groupby('name')['text']
+    # build a wordcloud using all the tokens in the text and then save it as png using a unique hash
+    aliases = {}
     for i, (name, df) in enumerate(data):
         text = ''
+        alias = hashlib.sha1(name.encode('utf-8')).hexdigest()
         for msg in tqdm.tqdm(df, desc=f'{i:03}) {name}'):
             text += ' '.join([re.sub(r'\W', '', t.text.lower()) for t in nlp(msg) if t.pos_ in tags]) + ' '
         WordCloud(
-            font_path=f'{res}/IndieFlower.ttf',
+            font_path=f'{folder}/IndieFlower.ttf',
             stopwords=stopwords,
             collocations=False,
             mask=mask,
-            scale=2,
             margin=20,
             max_words=500,
             min_font_size=10,
@@ -300,7 +304,10 @@ def clouds(data: pd.DataFrame, res: str, folder: str) -> None:
             contour_color='black',
             background_color='#FFFFED',
             colormap='viridis'
-        ).generate(text).to_file(f'{folder}/{name}.png')
+        ).generate(text).to_file(f'{subfolder}/{alias}.png')
+        aliases[name] = alias
+    # also store an excel file which maps name and hash
+    pd.Series(aliases).to_excel(f'{folder}/clouds.xlsx', header=False)
 
 
 # build argument parser
@@ -326,4 +333,4 @@ dataframe = load(folder=args.input)
 individuals(dataframe, folder=args.output)
 clusters(dataframe, folder=args.output)
 groups(dataframe, folder=args.output)
-clouds(dataframe, res=args.input, folder='temp' if args.output is None else args.output)
+clouds(dataframe, folder=args.input)

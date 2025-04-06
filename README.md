@@ -11,4 +11,4 @@ Luca **Giuliani**<sup>[[0000-0002-9120-6949](https://scholar.google.com/citation
 
 University of Bologna - Department of Computer Science and Engineering (DISI)
 
-E-mail: [luca.giuliani13@unibo.it](mailto::luca.giuliani13@unibo.it)
+[luca.giuliani13@unibo.it](mailto::luca.giuliani13@unibo.it)
