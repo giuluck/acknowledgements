@@ -14,6 +14,15 @@ div {
     padding: 0.2%;
 }
 
+hr {
+    margin: auto;
+    width: 60%;
+}
+
+.card-body {
+    padding: 0.2%;
+}
+
 #header {
     color: var(--light);
     background-color: var(--dark);

@@ -26,28 +26,27 @@ $(() => {
 })
 
 function filter(limit) {
-    // retrive cards div and search text
+    // retrive search text
     let text = $('#search').val().trim()
-    let cards = $('#cards')
     let items = []
     // if the text is not empty, match it with the names
     if (text.length > 0) {
         items = Object.keys(clouds)
             .filter(name => name.toLowerCase().indexOf(text) !== -1)
-            .map(name => `<div class="card-item" onclick="select('${name}')">${name}</div>`)
+            .map(name => `<div class="card-item card-text" onclick="select('${name}')">${name}</div>`)
     }
     // if there is at least one item, show the cards div and hide the wordcloud, otherwise hide the cards
     if (items.length > 0) {
-        cards.show()
+        $('#cards').show()
         // if there are too many matches, show the first <limit> (if available) and add a last '...' item to expand
         if (limit != null && items.length > limit) {
             items = items.slice(0, limit)
-            items[limit - 1] = '<div class="card-item" onclick="filter(null)">...</div>'
+            items[limit - 1] = '<div class="card-item card-text" onclick="filter(null)">...</div>'
         }
-        cards.html(items.join('\n'))
+        $('#cards > .card-body').html(items.join('<hr>'))
         $('#cloud').hide()
     } else {
-        cards.hide()
+        $('#cards').hide()
     }
 }
 
