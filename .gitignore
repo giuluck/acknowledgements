@@ -7,4 +7,6 @@ __pycache__
 venv
 temp
 dist
-res
+res/*
+!res/cloud.png
+!res/IndieFlower.ttf

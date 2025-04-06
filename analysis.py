@@ -1,5 +1,6 @@
 import argparse
 import locale
+import os
 import re
 import sqlite3
 from collections import namedtuple
@@ -8,7 +9,12 @@ from typing import Optional, List
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import spacy
+import stop_words
+import tqdm
+from PIL import Image
 from matplotlib import pyplot as plt
+from wordcloud import WordCloud
 
 locale.setlocale(locale.LC_ALL, 'it_IT')
 
@@ -103,14 +109,13 @@ def load(folder: str, start: Optional[str] = '2021-11', end: Optional[str] = '20
     # merge contacts data with people info (map aliases into "Surname N.")
     people = pd.read_csv(f'{folder}/people.csv', index_col='name')
     contacts = pd.Series(info).to_frame(name='name').reset_index(drop=False, names='number')
-    contacts = contacts.join(people, on='name', how='inner').drop(columns='name').rename(columns={'alias': 'name'})
-    contacts['name'] = contacts['name'].map(lambda n: n.split(' - ')).map(
-        lambda n: n[1] + ' ' + ' '.join([x[0] + '.' for x in n[0].split(' ')])
-    )
+    contacts = contacts.join(people, how='inner', on='name')
+    contacts['name'] = np.where(contacts['alias'].isna(), contacts['name'], contacts['alias'])
+    contacts = contacts.drop(columns='alias')
     # merge contacts data with messages
     data = data.join(other=contacts.set_index('number'), how='inner', on='number')
-    data = data.drop(columns=['number', 'sender']).astype({'sent': bool, 'individual': bool})
-    return data[['name', 'group', 'datetime', 'sent', 'text', 'multimedia', 'duration', 'cluster', 'individual']]
+    data = data.drop(columns=['number', 'sender']).astype({'sent': bool})
+    return data[['name', 'individual'] + [c for c in data.columns if c not in ['name', 'individual']]]
 
 
 def individuals(data: pd.DataFrame, limit: Optional[int] = 20, folder: Optional[str] = None) -> None:
@@ -129,20 +134,20 @@ def individuals(data: pd.DataFrame, limit: Optional[int] = 20, folder: Optional[
     cols = np.ceil(len(plots) / rows).astype(int)
     fig = plt.figure(figsize=(60, 60))
     # take private chat data (no group) for the individuals that are considered
-    data = data[data['group'].isna() & data['individual']]
+    data = data[data['group'].isna() & data['individual'].notna()]
     # for each kind of plot, select the correct datatypes and aggregate on both name and sent
     # (sort using a second group by to collect sum the values of sent and received messages)
     for idx, info in enumerate(plots):
         plt.subplot(rows, cols, idx + 1)
-        subdata = data[data['multimedia'] == info.multimedia]
-        subdata = subdata.groupby(['name', 'sent'])['duration'].agg(info.aggregation).reset_index('sent')
-        subdata = subdata.loc[subdata.groupby('name')['duration'].sum().sort_values(ascending=False).head(limit).index]
+        df = data[data['multimedia'] == info.multimedia]
+        df = df.groupby(['individual', 'sent'])['duration'].agg(info.aggregation).reset_index('sent')
+        df = df.loc[df.groupby('individual')['duration'].sum().sort_values(ascending=False).head(limit).index]
         ax = fig.gca()
         sns.barplot(
-            data=subdata,
+            data=df,
             x='duration',
-            y='name',
-            hue=subdata['sent'].map(lambda sent: 'Inviati' if sent else 'Ricevuti'),
+            y='individual',
+            hue=df['sent'].map(lambda sent: 'Inviati' if sent else 'Ricevuti'),
             hue_order=['Ricevuti', 'Inviati'],
             palette=['#0D21A1', '#FFD60A'],
             dodge=True,
@@ -180,11 +185,11 @@ def clusters(data: pd.DataFrame, frequency: str = '6MS', folder: Optional[str] =
     fig, axes = plt.subplots(len(plots) + 1, 1, figsize=(40, 60), gridspec_kw={'height_ratios': [1] + [8] * len(plots)})
     handles, labels = [], []
     for ax, info in zip(axes[1:], plots):
-        subdata = data[data['multimedia'] == info.multimedia].set_index('datetime')
-        subdata = subdata.groupby([pd.Grouper('datetime', freq=frequency), 'cluster'])['duration']
-        subdata = subdata.agg(info.aggregation).reset_index()
+        df = data[data['multimedia'] == info.multimedia].set_index('datetime')
+        df = df.groupby([pd.Grouper('datetime', freq=frequency), 'cluster'])['duration']
+        df = df.agg(info.aggregation).reset_index()
         sns.barplot(
-            data=subdata,
+            data=df,
             x='datetime',
             y='duration',
             hue='cluster',
@@ -192,7 +197,7 @@ def clusters(data: pd.DataFrame, frequency: str = '6MS', folder: Optional[str] =
             palette=['#377eb8', '#ff7f00', '#4daf4a', '#f781bf', '#a65628', '#984ea3', '#999999'],
             ax=ax
         )
-        ax.set_xticks(ax.get_xticks(), labels=subdata['datetime'].unique().map(lambda s: s.strftime("%b '%y")))
+        ax.set_xticks(ax.get_xticks(), labels=df['datetime'].unique().map(lambda s: s.strftime("%b '%y")))
         ax.set_xlabel(None)
         ax.set_ylabel(None)
         ax.set_yscale('log')
@@ -227,19 +232,19 @@ def groups(data: pd.DataFrame, frequency: str = '6MS', folder: Optional[str] = N
     fig, axes = plt.subplots(len(plots) + 1, 1, figsize=(40, 60), gridspec_kw={'height_ratios': [1] + [8] * len(plots)})
     handles, labels = [], []
     for ax, info in zip(axes[1:], plots):
-        subdata = data[data['multimedia'] == info.multimedia].set_index('datetime')
-        subdata = subdata.groupby([pd.Grouper('datetime', freq=frequency), 'group'])['duration']
-        subdata = subdata.agg(info.aggregation).reset_index()
+        df = data[data['multimedia'] == info.multimedia].set_index('datetime')
+        df = df.groupby([pd.Grouper('datetime', freq=frequency), 'group'])['duration']
+        df = df.agg(info.aggregation).reset_index()
         sns.barplot(
-            data=subdata,
+            data=df,
             x='datetime',
             y='duration',
             hue='group',
-            hue_order=['Che Cozza', 'Sleepover Club', 'Farti Phone', 'Bugllismo & Co.', 'Dreamers', 'Precariə'],
+            hue_order=['Che Cozza', 'Sleepover Club', 'Farti Phone', 'Bugllismo & Co.', 'Dreamers', 'Asse Precaria'],
             palette=['#dede00', '#e41a1c', '#ff7f00', '#4daf4a', '#984ea3', '#999999'],
             ax=ax
         )
-        ax.set_xticks(ax.get_xticks(), labels=subdata['datetime'].unique().map(lambda s: s.strftime("%b '%y")))
+        ax.set_xticks(ax.get_xticks(), labels=df['datetime'].unique().map(lambda s: s.strftime("%b '%y")))
         ax.set_xlabel(None)
         ax.set_ylabel(None)
         ax.set_yscale('log')
@@ -253,6 +258,49 @@ def groups(data: pd.DataFrame, frequency: str = '6MS', folder: Optional[str] = N
         fig.show()
     else:
         fig.savefig(f'{folder}/groups.pdf')
+
+
+def clouds(data: pd.DataFrame, res: str, folder: str) -> None:
+    """Creates and stores wordclouds for each contact.
+
+    :param data:
+        The original dataframe.
+
+    :param res:
+        The path to the resource folder.
+
+    :param folder:
+        The folder where to store the results.
+    """
+    folder = f'{folder}/clouds'
+    os.makedirs(folder, exist_ok=True)
+    mask = np.array(Image.open(f'{res}/cloud.png'))
+    # take private chats and text messages only and convert to tokens using nlp model for pos tagging
+    # take model stopwords along with italian and english stopwords, then remove all the punctuation with \W
+    nlp = spacy.load('it_core_news_lg')
+    tags = {'ADJ', 'ADV', 'NOUN', 'PROPN', 'VERB'}
+    stopwords = {*nlp.Defaults.stop_words, *stop_words.get_stop_words('italian'), *stop_words.get_stop_words('english')}
+    stopwords = {re.sub(r'\W', '', sw) for sw in stopwords}
+    data = data[data['group'].isna() & ~data['multimedia']].groupby('name')['text']
+    for i, (name, df) in enumerate(data):
+        text = ''
+        for msg in tqdm.tqdm(df, desc=f'{i:03}) {name}'):
+            text += ' '.join([re.sub(r'\W', '', t.text.lower()) for t in nlp(msg) if t.pos_ in tags]) + ' '
+        WordCloud(
+            font_path=f'{res}/IndieFlower.ttf',
+            stopwords=stopwords,
+            collocations=False,
+            mask=mask,
+            scale=2,
+            margin=20,
+            max_words=500,
+            min_font_size=10,
+            contour_width=20,
+            min_word_length=2,
+            contour_color='black',
+            background_color='#FFFFED',
+            colormap='viridis'
+        ).generate(text).to_file(f'{folder}/{name}.png')
 
 
 # build argument parser
@@ -278,3 +326,4 @@ dataframe = load(folder=args.input)
 individuals(dataframe, folder=args.output)
 clusters(dataframe, folder=args.output)
 groups(dataframe, folder=args.output)
+clouds(dataframe, res=args.input, folder='temp' if args.output is None else args.output)
