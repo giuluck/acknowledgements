@@ -27,12 +27,13 @@ $(() => {
 
 function filter(limit) {
     // retrive search text
-    let text = $('#search').val().trim()
+    let text = $('#search').val().trim().toLowerCase()
     let items = []
-    // if the text is not empty, match it with the names
+    // if the text is not empty, match it with the names (prepend a whitespace on both the name and the substring
+    // so that only the beginning of the words after a whitespace are considered)
     if (text.length > 0) {
         items = Object.keys(clouds)
-            .filter(name => name.toLowerCase().indexOf(text) !== -1)
+            .filter(name => ` ${name}`.toLowerCase().indexOf(` ${text}`) !== -1)
             .map(name => `<div class="card-item card-text" onclick="select('${name}')">${name}</div>`)
     }
     // if there is at least one item, show the cards div and hide the wordcloud, otherwise hide the cards
@@ -53,6 +54,6 @@ function filter(limit) {
 function select(name) {
     // hide the cards div, empty the search bar, and show the wordcloud by retrieving the alias from the name
     $('#cards').hide()
-    $('#search').val('')
+    $('#search').val(name)
     $('#cloud').attr("src", `res/clouds/${clouds[name]}.png`)
 }

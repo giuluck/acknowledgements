@@ -10,6 +10,11 @@ body {
     font-family: "Computer Modern", sans-serif;
 }
 
+#search, #cards {
+    font-size: 18px;
+    padding: 10px;
+}
+
 div {
     padding: 0.2%;
 }
